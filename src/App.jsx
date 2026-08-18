@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useEffect } from "react";
 import { createClient } from "@supabase/supabase-js";
-import { ChevronLeft, ChevronRight, Plus, X, User, Phone, Trash2, CalendarDays, Search, AlertTriangle, Users, ChevronDown, LogOut, Wifi, WifiOff, MessageCircle } from "lucide-react";
+import * as XLSX from "xlsx";
+import { ChevronLeft, ChevronRight, Plus, X, User, Phone, Trash2, CalendarDays, Search, AlertTriangle, Users, ChevronDown, LogOut, Wifi, WifiOff, MessageCircle, BarChart3, Download } from "lucide-react";
 
 // ============================================================
 //  CONFIGURAZIONE SUPABASE
@@ -9,7 +10,7 @@ import { ChevronLeft, ChevronRight, Plus, X, User, Phone, Trash2, CalendarDays, 
 //  La chiave publishable/anon di Supabase è pensata per il browser.
 // ============================================================
 const SUPABASE_URL = "https://xzjwykabzxrjfwlhyhpn.supabase.co";
-const SUPABASE_KEY = "sb_publishable_7erwA44JxXePWQbSe5O7Ow_5RwRmF4w";
+const SUPABASE_KEY = "const SUPABASE_KEY = "sb_publishable_...";";
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
@@ -140,6 +141,7 @@ function Calendar({ session }) {
   const [contacts, setContacts] = useState([]);
   const [modal, setModal] = useState(null);
   const [showRubrica, setShowRubrica] = useState(false);
+  const [showReport, setShowReport] = useState(false);
   const [query, setQuery] = useState("");
   const [online, setOnline] = useState(true);
 
@@ -296,6 +298,9 @@ function Calendar({ session }) {
         <button style={s.rubricaBtn} onClick={() => setShowRubrica(true)}>
           <Users size={16} /> Rubrica <span style={s.rubricaCount}>{contacts.length}</span>
         </button>
+        <button style={s.rubricaBtn} onClick={() => setShowReport(true)}>
+          <BarChart3 size={16} /> Report
+        </button>
         <button style={s.iconBtn} title="Esci" onClick={() => supabase.auth.signOut()}><LogOut size={16} /></button>
       </header>
 
@@ -351,6 +356,7 @@ function Calendar({ session }) {
 
       {modal && <BookingModal data={modal} bookings={bookings} contacts={contacts} onClose={() => setModal(null)} onSave={saveBooking} onSaveMany={saveManyBookings} onDelete={deleteBooking} />}
       {showRubrica && <RubricaModal contacts={contacts} onClose={() => setShowRubrica(false)} onSave={saveContact} onDelete={deleteContact} />}
+      {showReport && <ReportModal bookings={bookings} onClose={() => setShowReport(false)} />}
     </div>
   );
 }
@@ -722,6 +728,133 @@ function RubricaModal({ contacts, onClose, onSave, onDelete }) {
   );
 }
 
+function ReportModal({ bookings, onClose }) {
+  const oggi = new Date();
+  const primoMese = new Date(oggi.getFullYear(), oggi.getMonth(), 1);
+  const [dal, setDal] = useState(iso(primoMese));
+  const [al, setAl] = useState(iso(oggi));
+
+  const valueOf = (b) => {
+    const f = FIELD_MAP[b.field];
+    return b.price != null ? Number(b.price) : f.price * (b.duration || 1);
+  };
+
+  const dati = useMemo(() => {
+    const inRange = bookings.filter((b) => b.date >= dal && b.date <= al);
+    // incassi per campo
+    const perCampo = {};
+    let totale = 0;
+    // conteggio prenotazioni per campo
+    const contaCampo = {};
+    // occupazione per fascia oraria
+    const perOra = {};
+    for (const b of inRange) {
+      const v = valueOf(b);
+      perCampo[b.field] = (perCampo[b.field] || 0) + v;
+      contaCampo[b.field] = (contaCampo[b.field] || 0) + 1;
+      totale += v;
+      perOra[b.hour] = (perOra[b.hour] || 0) + 1;
+    }
+    // fascia più e meno frequentata
+    const oreOrdinate = Object.entries(perOra).sort((a, b) => b[1] - a[1]);
+    return { inRange, perCampo, contaCampo, totale, perOra, oreOrdinate, count: inRange.length };
+  }, [bookings, dal, al]);
+
+  const maxOra = Math.max(1, ...Object.values(dati.perOra));
+
+  const esporta = () => {
+    // foglio 1: elenco prenotazioni
+    const righe = dati.inRange
+      .slice()
+      .sort((a, b) => (a.date + String(a.hour).padStart(2, "0")).localeCompare(b.date + String(b.hour).padStart(2, "0")))
+      .map((b) => ({
+        Data: b.date,
+        Ora: String(b.hour).padStart(2, "0") + ":00",
+        Durata_h: b.duration || 1,
+        Campo: FIELD_MAP[b.field].name,
+        Cliente: b.name || "",
+        Telefono: b.phone || "",
+        Prezzo_EUR: valueOf(b),
+        Note: b.note || "",
+      }));
+    // foglio 2: riepilogo per campo
+    const riepilogo = FIELDS.map((f) => ({
+      Campo: f.name,
+      Prenotazioni: dati.contaCampo[f.id] || 0,
+      Incasso_EUR: dati.perCampo[f.id] || 0,
+    }));
+    riepilogo.push({ Campo: "TOTALE", Prenotazioni: dati.count, Incasso_EUR: dati.totale });
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(righe), "Prenotazioni");
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(riepilogo), "Riepilogo");
+    XLSX.writeFile(wb, `Report_Atene_${dal}_${al}.xlsx`);
+  };
+
+  return (
+    <div style={s.overlay} onClick={onClose}>
+      <div style={{ ...s.modal, width: "min(620px, 100%)" }} onClick={(e) => e.stopPropagation()}>
+        <div style={s.modalHead}>
+          <h2 style={s.modalTitle}>Report & Statistiche</h2>
+          <button style={s.iconBtn} onClick={onClose}><X size={18} /></button>
+        </div>
+
+        <div style={s.row}>
+          <div style={{ flex: 1 }}>
+            <label style={s.label}>Dal</label>
+            <input type="date" value={dal} onChange={(e) => setDal(e.target.value)} style={s.input} />
+          </div>
+          <div style={{ flex: 1 }}>
+            <label style={s.label}>Al</label>
+            <input type="date" value={al} onChange={(e) => setAl(e.target.value)} style={s.input} />
+          </div>
+        </div>
+
+        <div style={s.repTotalCard}>
+          <div>
+            <div style={s.repTotalLbl}>Incasso totale del periodo</div>
+            <div style={s.repTotalNum}>{eur(dati.totale)}</div>
+            <div style={s.repTotalLbl}>{dati.count} prenotazioni</div>
+          </div>
+          <button style={s.waBtn} onClick={esporta}><Download size={15} /> Esporta Excel</button>
+        </div>
+
+        <label style={s.label}>Incassi e prenotazioni per campo</label>
+        <div style={s.repTable}>
+          {FIELDS.map((f) => (
+            <div key={f.id} style={s.repRow}>
+              <span style={{ ...s.dot, background: f.color }} />
+              <span style={{ flex: 1, fontWeight: 600, fontSize: 13.5 }}>{f.name}</span>
+              <span style={s.repCount}>{dati.contaCampo[f.id] || 0} pren.</span>
+              <span style={{ fontWeight: 700, fontSize: 13.5, minWidth: 70, textAlign: "right" }}>{eur(dati.perCampo[f.id] || 0)}</span>
+            </div>
+          ))}
+        </div>
+
+        <label style={s.label}>Fasce orarie più utilizzate</label>
+        <div style={s.repHours}>
+          {HOURS.map((h) => {
+            const n = dati.perOra[h] || 0;
+            return (
+              <div key={h} style={s.repHourItem} title={`${n} prenotazioni`}>
+                <div style={s.repBarWrap}>
+                  <div style={{ ...s.repBar, height: `${(n / maxOra) * 100}%` }} />
+                </div>
+                <span style={s.repHourLbl}>{String(h).padStart(2, "0")}</span>
+              </div>
+            );
+          })}
+        </div>
+        {dati.oreOrdinate.length > 0 && (
+          <div style={s.repHint}>
+            Fascia più richiesta: <b>{String(dati.oreOrdinate[0][0]).padStart(2, "0")}:00</b> ({dati.oreOrdinate[0][1]} prenotazioni).
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 const globalCss = `
 * { box-sizing: border-box; }
 body { margin: 0; }
@@ -830,4 +963,16 @@ const s = {
   rubItem: { display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", borderRadius: 11, border: "1px solid #EAE7E0", background: "#fff" },
   rubEdit: { height: 32, padding: "0 12px", borderRadius: 8, border: "1px solid #E2E0DB", background: "#fff", fontWeight: 600, fontSize: 12.5, color: "#26241F" },
   rubDel: { width: 32, height: 32, borderRadius: 8, border: "1px solid #E7C9C9", background: "#FCF1F1", color: "#B4292A", display: "grid", placeItems: "center" },
+  repTotalCard: { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, marginTop: 14, padding: "16px 18px", borderRadius: 12, background: "#26241F", color: "#fff" },
+  repTotalLbl: { fontSize: 12, opacity: 0.7, fontWeight: 500 },
+  repTotalNum: { fontSize: 26, fontWeight: 800, letterSpacing: "-0.02em", margin: "2px 0" },
+  repTable: { display: "flex", flexDirection: "column", gap: 2, border: "1px solid #EAE7E0", borderRadius: 11, overflow: "hidden" },
+  repRow: { display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", background: "#fff", borderBottom: "1px solid #F0EDE7" },
+  repCount: { fontSize: 12.5, color: "#8A867C", fontWeight: 500, minWidth: 60, textAlign: "right" },
+  repHours: { display: "flex", alignItems: "flex-end", gap: 3, height: 90, padding: "0 2px", borderBottom: "1px solid #EAE7E0" },
+  repHourItem: { flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 3, height: "100%" },
+  repBarWrap: { flex: 1, width: "100%", display: "flex", alignItems: "flex-end" },
+  repBar: { width: "100%", background: "#1565C0", borderRadius: "3px 3px 0 0", minHeight: 2 },
+  repHourLbl: { fontSize: 9, color: "#A8A399", fontWeight: 600 },
+  repHint: { fontSize: 12.5, color: "#5A574F", marginTop: 8, padding: "8px 12px", background: "#F7F5F0", borderRadius: 9 },
 };
