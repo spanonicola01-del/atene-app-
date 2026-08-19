@@ -10,7 +10,7 @@ import { ChevronLeft, ChevronRight, Plus, X, User, Phone, Trash2, Search, AlertT
 //  La chiave publishable/anon di Supabase è pensata per il browser.
 // ============================================================
 const SUPABASE_URL = "https://xzjwykabzxrjfwlhyhpn.supabase.co";
-const SUPABASE_KEY = "sb_publishable_7erwA44JxXePWQbSe5O7Ow_5RwRmF4w";;
+const SUPABASE_KEY = "INCOLLA_QUI_LA_CHIAVE";
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
@@ -59,7 +59,10 @@ const waLink = (b) => {
   const durata = (b.duration || 1) + "h";
   const msg =
     `Ciao ${b.name || ""}, ti confermo la prenotazione presso Atene Central Village:\n` +
-    `🏟️ ${f.name}\n📅 ${dataIt}\n🕒 ${ora} (${durata})\n\nA presto!`;
+    `🏟️ ${f.name}\n📅 ${dataIt}\n🕒 ${ora} (${durata})\n\n` +
+    `📍 ASD Rosario Central, Via Palmara, 98124 Messina ME\n` +
+    `🗺️ https://maps.app.goo.gl/jB7fNGTU4SHXpSdx8\n\n` +
+    `A presto!`;
   // pulisce e normalizza il numero con prefisso italiano se manca
   let num = (b.phone || "").replace(/[^\d]/g, "");
   if (num) {
