@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect } from "react";
 import { createClient } from "@supabase/supabase-js";
 import * as XLSX from "xlsx";
-import { ChevronLeft, ChevronRight, Plus, X, User, Phone, Trash2, Search, AlertTriangle, Users, ChevronDown, LogOut, Wifi, WifiOff, MessageCircle, BarChart3, Download } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, X, User, Phone, Trash2, Search, AlertTriangle, Users, ChevronDown, LogOut, Wifi, WifiOff, MessageCircle, BarChart3, Download, Bell } from "lucide-react";
 
 // ============================================================
 //  CONFIGURAZIONE SUPABASE
@@ -11,7 +11,6 @@ import { ChevronLeft, ChevronRight, Plus, X, User, Phone, Trash2, Search, AlertT
 // ============================================================
 const SUPABASE_URL = "https://xzjwykabzxrjfwlhyhpn.supabase.co";
 const SUPABASE_KEY = "sb_publishable_7erwA44JxXePWQbSe5O7Ow_5RwRmF4w";
-
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
 // Logo Atene Sport Village (incorporato, nessun file esterno necessario)
@@ -148,6 +147,7 @@ function Calendar({ session }) {
   const [modal, setModal] = useState(null);
   const [showRubrica, setShowRubrica] = useState(false);
   const [showReport, setShowReport] = useState(false);
+  const [showDomani, setShowDomani] = useState(false);
   const [query, setQuery] = useState("");
   const [online, setOnline] = useState(true);
 
@@ -304,6 +304,9 @@ function Calendar({ session }) {
         <button style={s.rubricaBtn} onClick={() => setShowRubrica(true)}>
           <Users size={16} /> Rubrica <span style={s.rubricaCount}>{contacts.length}</span>
         </button>
+        <button style={s.rubricaBtn} onClick={() => setShowDomani(true)}>
+          <Bell size={16} /> Domani
+        </button>
         <button style={s.rubricaBtn} onClick={() => setShowReport(true)}>
           <BarChart3 size={16} /> Report
         </button>
@@ -363,6 +366,7 @@ function Calendar({ session }) {
       {modal && <BookingModal data={modal} bookings={bookings} contacts={contacts} onClose={() => setModal(null)} onSave={saveBooking} onSaveMany={saveManyBookings} onDelete={deleteBooking} />}
       {showRubrica && <RubricaModal contacts={contacts} onClose={() => setShowRubrica(false)} onSave={saveContact} onDelete={deleteContact} />}
       {showReport && <ReportModal bookings={bookings} onClose={() => setShowReport(false)} />}
+      {showDomani && <DomaniModal bookings={bookings} onClose={() => setShowDomani(false)} />}
     </div>
   );
 }
@@ -734,6 +738,67 @@ function RubricaModal({ contacts, onClose, onSave, onDelete }) {
   );
 }
 
+function DomaniModal({ bookings, onClose }) {
+  const domani = useMemo(() => {
+    const d = new Date();
+    d.setDate(d.getDate() + 1);
+    return iso(d);
+  }, []);
+
+  const lista = useMemo(() => {
+    return bookings
+      .filter((b) => b.date === domani)
+      .sort((a, b) => a.hour - b.hour);
+  }, [bookings, domani]);
+
+  const dataLabel = new Date(domani + "T00:00:00").toLocaleDateString("it-IT", { weekday: "long", day: "numeric", month: "long" });
+
+  return (
+    <div style={s.overlay} onClick={onClose}>
+      <div style={{ ...s.modal, width: "min(520px, 100%)" }} onClick={(e) => e.stopPropagation()}>
+        <div style={s.modalHead}>
+          <div>
+            <h2 style={s.modalTitle}>Promemoria di domani</h2>
+            <div style={{ fontSize: 13, color: "#5A7A94", marginTop: 2, textTransform: "capitalize" }}>{dataLabel}</div>
+          </div>
+          <button style={s.iconBtn} onClick={onClose}><X size={18} /></button>
+        </div>
+
+        {lista.length === 0 ? (
+          <div style={s.empty}>Nessuna prenotazione per domani.</div>
+        ) : (
+          <>
+            <div style={{ fontSize: 12.5, color: "#5A7A94", margin: "6px 0 12px" }}>
+              {lista.length} prenotazion{lista.length === 1 ? "e" : "i"}. Invia il promemoria a chi ha il telefono salvato.
+            </div>
+            <div style={s.domList}>
+              {lista.map((b) => {
+                const f = FIELD_MAP[b.field];
+                return (
+                  <div key={b.id} style={s.domItem}>
+                    <span style={{ ...s.domTag, background: f.tint, color: f.color }}>{f.short}</span>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={s.domName}>{b.name || f.name}</div>
+                      <div style={s.domMeta}>{String(b.hour).padStart(2, "0")}:00 · {b.duration || 1}h · {f.name}{b.phone ? ` · ${b.phone}` : ""}</div>
+                    </div>
+                    {b.phone ? (
+                      <a href={waLink(b)} target="_blank" rel="noopener noreferrer" style={s.domWaBtn} title="Invia promemoria WhatsApp">
+                        <MessageCircle size={15} />
+                      </a>
+                    ) : (
+                      <span style={s.domNoPhone}>no tel.</span>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function ReportModal({ bookings, onClose }) {
   const oggi = new Date();
   const primoMese = new Date(oggi.getFullYear(), oggi.getMonth(), 1);
@@ -984,4 +1049,11 @@ const s = {
   repBar: { width: "100%", background: "#1565C0", borderRadius: "3px 3px 0 0", minHeight: 2 },
   repHourLbl: { fontSize: 9, color: "#A8A399", fontWeight: 600 },
   repHint: { fontSize: 12.5, color: "#5A574F", marginTop: 8, padding: "8px 12px", background: "#F7F5F0", borderRadius: 9 },
+  domList: { display: "flex", flexDirection: "column", gap: 8, maxHeight: 420, overflowY: "auto" },
+  domItem: { display: "flex", alignItems: "center", gap: 12, padding: "10px 12px", borderRadius: 11, border: "1px solid #E2E8F0", background: "#fff" },
+  domTag: { width: 38, height: 38, borderRadius: 9, display: "grid", placeItems: "center", fontWeight: 800, fontSize: 12, flexShrink: 0 },
+  domName: { fontSize: 14.5, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
+  domMeta: { fontSize: 12.5, color: "#5A7A94", marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
+  domWaBtn: { width: 38, height: 38, borderRadius: 10, border: "none", background: "#25D366", color: "#fff", display: "grid", placeItems: "center", flexShrink: 0, textDecoration: "none" },
+  domNoPhone: { fontSize: 11.5, color: "#A8B5C2", fontStyle: "italic", flexShrink: 0 },
 };
